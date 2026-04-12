@@ -12,27 +12,6 @@ export default async function handler(req, res) {
 
   try {
 
-    const prompt = `
-Analiza estas capturas de pantalla de ganancias de Uber.
-
-Responde SOLO con JSON válido, sin texto adicional.
-
-Formato:
-{"days":[
-  {
-    "date":"DD/MM/YYYY",
-    "day_name":"Lun",
-    "hours_connected":10.5,
-    "trips":18,
-    "tarifa_neta":655.51,
-    "incentivos":695.00,
-    "propinas":158.65,
-    "impuestos":121.86,
-    "total":1387.30
-  }
-]}
-`;
-
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -47,8 +26,24 @@ Formato:
           {
             role: 'user',
             content: [
-              ...images,
-              { type: 'text', text: prompt }
+              {
+                type: "text",
+                text: `
+Analiza estas capturas de Uber.
+
+Responde SOLO JSON válido:
+
+{"days":[{"date":"DD/MM/YYYY","total":1000}]}
+`
+              },
+              ...images.map(img => ({
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: "image/jpeg",
+                  data: img.source.data
+                }
+              }))
             ]
           }
         ]
@@ -57,33 +52,26 @@ Formato:
 
     const data = await response.json();
 
-    let text = data.content?.map(c => c.text || '').join('') || '';
+    console.log("CLAUDE RAW:", JSON.stringify(data));
 
-    console.log("RAW CLAUDE:", text);
+    const text = data.content?.[0]?.text;
 
-    // =============================
-    // 🔥 LIMPIEZA DE JSON (FIX CLAVE)
-    // =============================
-    let clean = text
-      .replace(/```json/g, '')
-      .replace(/```/g, '')
-      .trim();
-
-    const jsonStart = clean.indexOf('{');
-    const jsonEnd = clean.lastIndexOf('}');
-
-    if (jsonStart !== -1 && jsonEnd !== -1) {
-      clean = clean.substring(jsonStart, jsonEnd + 1);
+    if (!text) {
+      return res.status(500).json({
+        error: "Claude no respondió",
+        raw: data
+      });
     }
+
+    let clean = text.replace(/```json|```/g, '').trim();
 
     let parsed;
 
     try {
       parsed = JSON.parse(clean);
     } catch (e) {
-      console.error("❌ JSON ERROR:", clean);
       return res.status(500).json({
-        error: "Claude no devolvió JSON válido",
+        error: "JSON inválido",
         raw: clean
       });
     }
@@ -91,7 +79,6 @@ Formato:
     return res.status(200).json(parsed);
 
   } catch (err) {
-    console.error("❌ SERVER ERROR:", err);
     return res.status(500).json({ error: err.message });
   }
 }
