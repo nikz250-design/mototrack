@@ -16,6 +16,7 @@
 <p id="uploadCounter"></p>
 
 <script>
+
 // =============================
 let selectedFiles = [];
 let pendingAIDays = [];
@@ -32,8 +33,16 @@ function renderPreviews(){
 }
 
 // =============================
+// ANALYZE (FIX + DEBUG)
+// =============================
 async function analyzeImages(){
-  if(selectedFiles.length === 0) return alert("No hay imágenes");
+
+  if(selectedFiles.length === 0){
+    alert("No hay imágenes");
+    return;
+  }
+
+  console.log("🚀 Iniciando análisis");
 
   const BATCH = 3;
   pendingAIDays = [];
@@ -41,6 +50,7 @@ async function analyzeImages(){
   for(let i=0;i<selectedFiles.length;i+=BATCH){
 
     const batch = selectedFiles.slice(i,i+BATCH);
+    console.log("📦 Batch:", batch);
 
     const images = await Promise.all(batch.map(async f=>{
       return {
@@ -53,39 +63,86 @@ async function analyzeImages(){
       }
     }));
 
-    const res = await fetch('/api/analyze',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({images})
-    });
+    try{
 
-    const data = await res.json();
+      const res = await fetch('/api/analyze',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({images})
+      });
 
-    data.days.forEach(d=>{
-      const exists = pendingAIDays.find(x=>x.date===d.date);
-      if(!exists) pendingAIDays.push(d);
-    });
+      console.log("📡 STATUS:", res.status);
+
+      const text = await res.text();
+      console.log("📡 RAW RESPONSE:", text);
+
+      if(!res.ok){
+        alert("Error API: " + text);
+        return;
+      }
+
+      const data = JSON.parse(text);
+
+      if(!data.days){
+        alert("Respuesta inválida de la API");
+        return;
+      }
+
+      data.days.forEach(d=>{
+        const exists = pendingAIDays.find(x=>x.date===d.date);
+        if(!exists) pendingAIDays.push(d);
+      });
+
+    }catch(err){
+      console.error("❌ ERROR:", err);
+      alert("Error en análisis: " + err.message);
+    }
   }
 
-  console.log("RESULTADO:", pendingAIDays);
-  alert("Análisis completado");
+  console.log("✅ RESULTADO FINAL:", pendingAIDays);
+  alert("Análisis terminado");
 }
 
 // =============================
+// INSIGHTS
+// =============================
 async function generateInsights(){
 
-  const res = await fetch('/api/insights',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      stats: pendingAIDays
-    })
-  });
+  if(pendingAIDays.length === 0){
+    alert("Primero analiza datos");
+    return;
+  }
 
-  const data = await res.json();
-  console.log("INSIGHTS:", data);
+  try{
+    const res = await fetch('/api/insights',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        stats: pendingAIDays
+      })
+    });
+
+    const text = await res.text();
+    console.log("INSIGHTS RAW:", text);
+
+    if(!res.ok){
+      alert("Error insights: " + text);
+      return;
+    }
+
+    const data = JSON.parse(text);
+    console.log("INSIGHTS:", data);
+
+    alert("Insights generados (ver consola)");
+
+  }catch(err){
+    console.error(err);
+    alert("Error insights");
+  }
 }
 
+// =============================
+// HELPERS
 // =============================
 function fileToBase64(file){
   return new Promise((res)=>{
@@ -94,6 +151,7 @@ function fileToBase64(file){
     r.readAsDataURL(file);
   });
 }
+
 </script>
 
 </body>
