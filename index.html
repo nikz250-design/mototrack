@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>MotoTrack</title>
+</head>
+
+<body style="background:#111;color:white;font-family:sans-serif;padding:20px">
+
+<h2>MotoTrack IA 🚀</h2>
+
+<input type="file" id="fileInput" multiple>
+<button onclick="analyzeImages()">Analizar</button>
+<button onclick="generateInsights()">Insights</button>
+
+<p id="uploadCounter"></p>
+
+<script>
+// =============================
+let selectedFiles = [];
+let pendingAIDays = [];
+
+// =============================
+document.getElementById('fileInput').addEventListener('change', (e)=>{
+  selectedFiles = Array.from(e.target.files).slice(0,10);
+  renderPreviews();
+});
+
+function renderPreviews(){
+  document.getElementById('uploadCounter').textContent =
+    `${selectedFiles.length}/10 imágenes`;
+}
+
+// =============================
+async function analyzeImages(){
+  if(selectedFiles.length === 0) return alert("No hay imágenes");
+
+  const BATCH = 3;
+  pendingAIDays = [];
+
+  for(let i=0;i<selectedFiles.length;i+=BATCH){
+
+    const batch = selectedFiles.slice(i,i+BATCH);
+
+    const images = await Promise.all(batch.map(async f=>{
+      return {
+        type:'image',
+        source:{
+          type:'base64',
+          media_type:'image/jpeg',
+          data: await fileToBase64(f)
+        }
+      }
+    }));
+
+    const res = await fetch('/api/analyze',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({images})
+    });
+
+    const data = await res.json();
+
+    data.days.forEach(d=>{
+      const exists = pendingAIDays.find(x=>x.date===d.date);
+      if(!exists) pendingAIDays.push(d);
+    });
+  }
+
+  console.log("RESULTADO:", pendingAIDays);
+  alert("Análisis completado");
+}
+
+// =============================
+async function generateInsights(){
+
+  const res = await fetch('/api/insights',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      stats: pendingAIDays
+    })
+  });
+
+  const data = await res.json();
+  console.log("INSIGHTS:", data);
+}
+
+// =============================
+function fileToBase64(file){
+  return new Promise((res)=>{
+    const r = new FileReader();
+    r.onload = ()=> res(r.result.split(',')[1]);
+    r.readAsDataURL(file);
+  });
+}
+</script>
+
+</body>
+</html>
