@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MotoTrack v2</title>
+<title>MotoTrack v3</title>
 
 <!-- FIREBASE -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -11,40 +11,26 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
 <style>
-body{
-  background:#080810;
-  color:#fff;
-  font-family:sans-serif;
-  padding:20px;
-}
-button{
-  padding:10px;
-  border-radius:8px;
-  border:none;
-  background:#00f5a0;
-  font-weight:bold;
-}
-.card{
-  background:#111;
-  padding:15px;
-  border-radius:10px;
-  margin-top:10px;
-}
+body{background:#080810;color:#fff;font-family:sans-serif;padding:20px}
+button{padding:10px;border-radius:8px;border:none;background:#00f5a0;font-weight:bold;margin:5px}
+.card{background:#111;padding:12px;border-radius:10px;margin-top:10px}
+.big{font-size:22px;font-weight:800}
 </style>
 </head>
 
 <body>
 
-<h2>🚀 MotoTrack v2</h2>
+<h2>🚀 MotoTrack v3</h2>
 
-<button onclick="loginGoogle()">Login con Google</button>
+<button onclick="loginGoogle()">Login</button>
 <button onclick="addTestDay()">Agregar día prueba</button>
 
-<div id="data"></div>
+<div id="stats"></div>
+<div id="list"></div>
 
 <script>
 
-// 🔥 FIREBASE CONFIG
+// 🔥 CONFIG
 const firebaseConfig = {
   apiKey: "AIzaSyAhuE1hw1xshm9MK1sItY9PAVvcLLKqkh4",
   authDomain: "mototrack-50dd1.firebaseapp.com",
@@ -60,34 +46,33 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 
 let currentUser = null;
+let USER_DAYS = [];
 
 // 🔐 LOGIN
-function loginGoogle() {
+function loginGoogle(){
   const provider = new firebase.auth.GoogleAuthProvider();
 
   auth.signInWithPopup(provider)
-    .then((result) => {
-      currentUser = result.user;
+    .then(res=>{
+      currentUser = res.user;
       alert("Login exitoso");
       loadUserData();
     })
-    .catch((err) => {
-      console.error(err);
-    });
+    .catch(err=>console.error(err));
 }
 
-// 🔄 SESIÓN
-auth.onAuthStateChanged(user => {
+// 🔄 SESSION
+auth.onAuthStateChanged(user=>{
   if(user){
     currentUser = user;
     loadUserData();
   }
 });
 
-// 💾 GUARDAR
+// 💾 SAVE
 async function saveDay(day){
   if(!currentUser){
-    alert("Haz login primero");
+    alert("Login primero");
     return;
   }
 
@@ -97,48 +82,81 @@ async function saveDay(day){
     createdAt: new Date()
   });
 
-  alert("Guardado");
   loadUserData();
 }
 
-// 📥 CARGAR
+// 📥 LOAD
 async function loadUserData(){
   if(!currentUser) return;
 
-  const snapshot = await db
-    .collection("days")
+  const snap = await db.collection("days")
     .where("userId","==",currentUser.uid)
     .get();
 
-  let html = "<h3>Tus datos:</h3>";
+  USER_DAYS = [];
 
-  snapshot.forEach(doc=>{
-    const d = doc.data();
+  snap.forEach(doc=>{
+    USER_DAYS.push(doc.data());
+  });
+
+  render();
+}
+
+// 🧠 GET DATA
+function getDays(){
+  if(USER_DAYS.length>0) return USER_DAYS;
+
+  // fallback fake
+  return [
+    {day_name:"Lun",total:500},
+    {day_name:"Mar",total:700},
+    {day_name:"Mié",total:300}
+  ];
+}
+
+// 📊 RENDER
+function render(){
+  const days = getDays();
+
+  if(!days.length){
+    document.getElementById("stats").innerHTML = "Sin datos";
+    return;
+  }
+
+  const total = days.reduce((s,d)=>s+(d.total||0),0);
+  const avg = total / days.length;
+
+  document.getElementById("stats").innerHTML = `
+    <div class="card">
+      <div class="big">$${Math.round(total)}</div>
+      Total generado
+      <br><br>
+      Promedio: $${Math.round(avg)}
+    </div>
+  `;
+
+  let html = "";
+
+  days.forEach(d=>{
     html += `
       <div class="card">
-        ${d.day_name} - $${d.total}
+        ${d.day_name} → $${d.total}
       </div>
     `;
   });
 
-  document.getElementById("data").innerHTML = html;
+  document.getElementById("list").innerHTML = html;
 }
 
 // 🧪 TEST
 function addTestDay(){
-  const day = {
+  const d = {
     date:"12/04/2026",
     day_name:"Dom",
-    hours_connected:10,
-    trips:15,
-    tarifa_neta:500,
-    incentivos:100,
-    propinas:50,
-    impuestos:30,
-    total:620
+    total:Math.floor(Math.random()*800+200)
   };
 
-  saveDay(day);
+  saveDay(d);
 }
 
 </script>
