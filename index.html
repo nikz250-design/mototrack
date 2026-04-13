@@ -2,154 +2,143 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>MotoTrack</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MotoTrack v2</title>
+
+<!-- FIREBASE -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+body{
+  background:#080810;
+  color:#fff;
+  font-family:sans-serif;
+  padding:20px;
+}
+button{
+  padding:10px;
+  border-radius:8px;
+  border:none;
+  background:#00f5a0;
+  font-weight:bold;
+}
+.card{
+  background:#111;
+  padding:15px;
+  border-radius:10px;
+  margin-top:10px;
+}
+</style>
 </head>
 
-<body style="background:#111;color:white;font-family:sans-serif;padding:20px">
+<body>
 
-<h2>MotoTrack IA 🚀</h2>
+<h2>🚀 MotoTrack v2</h2>
 
-<input type="file" id="fileInput" multiple>
-<button onclick="analyzeImages()">Analizar</button>
-<button onclick="generateInsights()">Insights</button>
+<button onclick="loginGoogle()">Login con Google</button>
+<button onclick="addTestDay()">Agregar día prueba</button>
 
-<p id="uploadCounter"></p>
+<div id="data"></div>
 
 <script>
 
-// =============================
-let selectedFiles = [];
-let pendingAIDays = [];
+// 🔥 FIREBASE CONFIG
+const firebaseConfig = {
+  apiKey: "AIzaSyAhuE1hw1xshm9MK1sItY9PAVvcLLKqkh4",
+  authDomain: "mototrack-50dd1.firebaseapp.com",
+  projectId: "mototrack-50dd1",
+  storageBucket: "mototrack-50dd1.firebasestorage.app",
+  messagingSenderId: "506501390826",
+  appId: "1:506501390826:web:9805a13f707fb45729d293"
+};
 
-// =============================
-document.getElementById('fileInput').addEventListener('change', (e)=>{
-  selectedFiles = Array.from(e.target.files).slice(0,10);
-  renderPreviews();
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let currentUser = null;
+
+// 🔐 LOGIN
+function loginGoogle() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+
+  auth.signInWithPopup(provider)
+    .then((result) => {
+      currentUser = result.user;
+      alert("Login exitoso");
+      loadUserData();
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+}
+
+// 🔄 SESIÓN
+auth.onAuthStateChanged(user => {
+  if(user){
+    currentUser = user;
+    loadUserData();
+  }
 });
 
-function renderPreviews(){
-  document.getElementById('uploadCounter').textContent =
-    `${selectedFiles.length}/10 imágenes`;
-}
-
-// =============================
-// ANALYZE (FIX + DEBUG)
-// =============================
-async function analyzeImages(){
-
-  if(selectedFiles.length === 0){
-    alert("No hay imágenes");
+// 💾 GUARDAR
+async function saveDay(day){
+  if(!currentUser){
+    alert("Haz login primero");
     return;
   }
 
-  console.log("🚀 Iniciando análisis");
-
-  const BATCH = 3;
-  pendingAIDays = [];
-
-  for(let i=0;i<selectedFiles.length;i+=BATCH){
-
-    const batch = selectedFiles.slice(i,i+BATCH);
-    console.log("📦 Batch:", batch);
-
-    const images = await Promise.all(batch.map(async f=>{
-      return {
-        type:'image',
-        source:{
-          type:'base64',
-          media_type:'image/jpeg',
-          data: await fileToBase64(f)
-        }
-      }
-    }));
-
-    try{
-
-      const res = await fetch('/api/analyze',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({images})
-      });
-
-      console.log("📡 STATUS:", res.status);
-
-      const text = await res.text();
-      console.log("📡 RAW RESPONSE:", text);
-
-      if(!res.ok){
-        alert("Error API: " + text);
-        return;
-      }
-
-      const data = JSON.parse(text);
-
-      if(!data.days){
-        alert("Respuesta inválida de la API");
-        return;
-      }
-
-      data.days.forEach(d=>{
-        const exists = pendingAIDays.find(x=>x.date===d.date);
-        if(!exists) pendingAIDays.push(d);
-      });
-
-    }catch(err){
-      console.error("❌ ERROR:", err);
-      alert("Error en análisis: " + err.message);
-    }
-  }
-
-  console.log("✅ RESULTADO FINAL:", pendingAIDays);
-  alert("Análisis terminado");
-}
-
-// =============================
-// INSIGHTS
-// =============================
-async function generateInsights(){
-
-  if(pendingAIDays.length === 0){
-    alert("Primero analiza datos");
-    return;
-  }
-
-  try{
-    const res = await fetch('/api/insights',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        stats: pendingAIDays
-      })
-    });
-
-    const text = await res.text();
-    console.log("INSIGHTS RAW:", text);
-
-    if(!res.ok){
-      alert("Error insights: " + text);
-      return;
-    }
-
-    const data = JSON.parse(text);
-    console.log("INSIGHTS:", data);
-
-    alert("Insights generados (ver consola)");
-
-  }catch(err){
-    console.error(err);
-    alert("Error insights");
-  }
-}
-
-// =============================
-// HELPERS
-// =============================
-function fileToBase64(file){
-  return new Promise((res)=>{
-    const r = new FileReader();
-    r.onload = ()=> res(r.result.split(',')[1]);
-    r.readAsDataURL(file);
+  await db.collection("days").add({
+    userId: currentUser.uid,
+    ...day,
+    createdAt: new Date()
   });
+
+  alert("Guardado");
+  loadUserData();
+}
+
+// 📥 CARGAR
+async function loadUserData(){
+  if(!currentUser) return;
+
+  const snapshot = await db
+    .collection("days")
+    .where("userId","==",currentUser.uid)
+    .get();
+
+  let html = "<h3>Tus datos:</h3>";
+
+  snapshot.forEach(doc=>{
+    const d = doc.data();
+    html += `
+      <div class="card">
+        ${d.day_name} - $${d.total}
+      </div>
+    `;
+  });
+
+  document.getElementById("data").innerHTML = html;
+}
+
+// 🧪 TEST
+function addTestDay(){
+  const day = {
+    date:"12/04/2026",
+    day_name:"Dom",
+    hours_connected:10,
+    trips:15,
+    tarifa_neta:500,
+    incentivos:100,
+    propinas:50,
+    impuestos:30,
+    total:620
+  };
+
+  saveDay(day);
 }
 
 </script>
