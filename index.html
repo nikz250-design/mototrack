@@ -2,25 +2,43 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MotoTrack SaaS</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
 <style>
-/* ... (todos tus estilos CSS permanecen intactos) ... */
+body{background:#080810;color:#fff;font-family:sans-serif;padding:20px}
+button{padding:10px;border-radius:8px;border:none;background:#00f5a0;font-weight:bold;margin:5px;cursor:pointer}
+.card{background:#111;padding:15px;border-radius:10px;margin-top:10px}
+.big{font-size:26px;font-weight:800}
 </style>
 </head>
+
 <body>
 
-<script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  deleteDoc,
-  serverTimestamp
-} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+<h2>🚀 MotoTrack SaaS</h2>
 
+<div id="auth">
+  <button onclick="login()">Login con Google</button>
+</div>
+
+<div id="app" style="display:none">
+
+  <button onclick="logout()">Cerrar sesión</button>
+  <button onclick="addTest()">Agregar día prueba</button>
+
+  <div id="dashboard"></div>
+  <div id="days"></div>
+
+</div>
+
+<script>
+
+// 🔥 TU FIREBASE (YA LISTO)
 const firebaseConfig = {
   apiKey: "AIzaSyAhuE1hw1xshm9MK1sItY9PAVvcLLKqkh4",
   authDomain: "mototrack-50dd1.firebaseapp.com",
@@ -30,187 +48,114 @@ const firebaseConfig = {
   appId: "1:506501390826:web:9805a13f707fb45729d293"
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const provider = new GoogleAuthProvider();
+firebase.initializeApp(firebaseConfig);
 
-window.auth = auth;
-window.db = db;
-window.currentUser = null;
+const auth = firebase.auth();
+const db = firebase.firestore();
 
-onAuthStateChanged(auth, async (user) => {
-  if (user) {
-    window.currentUser = {
-      name: user.displayName || 'Usuario',
-      email: user.email || '',
-      photo: user.photoURL || null,
-      uid: user.uid
-    };
-    await window.__mtLoadCloudData?.();
-    startApp();
+let USER = null;
+let DAYS = [];
+
+// 🔐 LOGIN
+function login(){
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider);
+}
+
+// 🔐 LOGOUT
+function logout(){
+  auth.signOut();
+}
+
+// 🔄 SESSION
+auth.onAuthStateChanged(user=>{
+  if(user){
+    USER = user;
+    document.getElementById("auth").style.display="none";
+    document.getElementById("app").style.display="block";
+    loadData();
+  }else{
+    USER = null;
+    document.getElementById("auth").style.display="block";
+    document.getElementById("app").style.display="none";
   }
 });
 
-window.loginWithGoogle = async function () {
-  const result = await signInWithPopup(auth, provider);
-  window.currentUser = {
-    name: result.user.displayName || 'Usuario',
-    email: result.user.email || '',
-    photo: result.user.photoURL || null,
-    uid: result.user.uid
+// 💾 GUARDAR DÍA
+async function saveDay(day){
+  await db.collection("days").add({
+    userId: USER.uid,
+    ...day,
+    createdAt: new Date()
+  });
+}
+
+// 📥 CARGAR
+async function loadData(){
+  const snap = await db.collection("days")
+    .where("userId","==",USER.uid)
+    .orderBy("createdAt","desc")
+    .get();
+
+  DAYS = [];
+  snap.forEach(doc=>{
+    DAYS.push(doc.data());
+  });
+
+  render();
+}
+
+// 🧪 TEST
+function addTest(){
+  const d = {
+    date: new Date().toLocaleDateString(),
+    total: Math.floor(Math.random()*1000+200)
   };
-  await window.__mtLoadCloudData?.();
-  startApp();
-};
 
-window.logout = async function () {
-  try { await signOut(auth); } catch (e) {}
-  window.currentUser = null;
-  document.getElementById('authScreen').classList.remove('hidden');
-  document.getElementById('mainApp').style.display = 'none';
-  showToast('👋 Sesión cerrada');
-};
+  saveDay(d).then(loadData);
+}
+
+// 📊 DASHBOARD REAL
+function render(){
+
+  if(!DAYS.length){
+    document.getElementById("dashboard").innerHTML = "Sin datos";
+    return;
+  }
+
+  const total = DAYS.reduce((s,d)=>s+d.total,0);
+  const avg = total / DAYS.length;
+  const best = Math.max(...DAYS.map(d=>d.total));
+
+  document.getElementById("dashboard").innerHTML = `
+    <div class="card">
+      <div class="big">$${Math.round(total)}</div>
+      Total generado
+    </div>
+
+    <div class="card">
+      Promedio: <b>$${Math.round(avg)}</b>
+    </div>
+
+    <div class="card">
+      Mejor día: <b>$${best}</b>
+    </div>
+  `;
+
+  let html = "";
+
+  DAYS.forEach(d=>{
+    html += `
+      <div class="card">
+        ${d.date} → $${d.total}
+      </div>
+    `;
+  });
+
+  document.getElementById("days").innerHTML = html;
+}
+
 </script>
 
-<script>
-// 2) NUEVAS FUNCIONES DE ALMACENAMIENTO (HÍBRIDO LOCAL + CLOUD)
-const MT_CACHE = {
-  history: [],
-  expenses: [],
-  insights: {}
-};
-
-function userKey() {
-  return window.currentUser?.uid || 'demo';
-}
-
-function localHistoryKey() {
-  return `mt_v2_${userKey()}`;
-}
-
-function getHistory() {
-  if (MT_CACHE.history.length) return MT_CACHE.history;
-  try {
-    return JSON.parse(localStorage.getItem(localHistoryKey()) || '[]');
-  } catch {
-    return [];
-  }
-}
-
-function saveHistory(h) {
-  MT_CACHE.history = Array.isArray(h) ? h : [];
-  localStorage.setItem(localHistoryKey(), JSON.stringify(MT_CACHE.history));
-  void syncCloudData();
-}
-
-function getExpenses() {
-  if (MT_CACHE.expenses.length) return MT_CACHE.expenses;
-  try {
-    return JSON.parse(localStorage.getItem('mt_exp_v1') || '[]');
-  } catch {
-    return [];
-  }
-}
-
-function saveExpensesData(e) {
-  MT_CACHE.expenses = Array.isArray(e) ? e : [];
-  localStorage.setItem('mt_exp_v1', JSON.stringify(MT_CACHE.expenses));
-  void syncCloudData();
-}
-
-function getInsightCache() {
-  if (Object.keys(MT_CACHE.insights).length) return MT_CACHE.insights;
-  try {
-    return JSON.parse(localStorage.getItem('mt_ic_v3') || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function saveInsightCache(d) {
-  MT_CACHE.insights = d && typeof d === 'object' ? d : {};
-  localStorage.setItem('mt_ic_v3', JSON.stringify(MT_CACHE.insights));
-  void syncCloudData();
-}
-
-async function syncCloudData() {
-  if (!window.currentUser?.uid || !window.db) return;
-  const ref = doc(window.db, 'users', window.currentUser.uid);
-  await setDoc(ref, {
-    profile: {
-      name: window.currentUser.name || '',
-      email: window.currentUser.email || '',
-      photo: window.currentUser.photo || null,
-      uid: window.currentUser.uid
-    },
-    history: MT_CACHE.history,
-    expenses: MT_CACHE.expenses,
-    insights: MT_CACHE.insights,
-    updatedAt: serverTimestamp()
-  }, { merge: true });
-}
-
-window.__mtLoadCloudData = async function () {
-  if (!window.currentUser?.uid || !window.db) return;
-
-  const ref = doc(window.db, 'users', window.currentUser.uid);
-  const snap = await getDoc(ref);
-
-  if (snap.exists()) {
-    const data = snap.data() || {};
-    MT_CACHE.history = Array.isArray(data.history) ? data.history : [];
-    MT_CACHE.expenses = Array.isArray(data.expenses) ? data.expenses : [];
-    MT_CACHE.insights = data.insights && typeof data.insights === 'object' ? data.insights : {};
-  } else {
-    MT_CACHE.history = [];
-    MT_CACHE.expenses = [];
-    MT_CACHE.insights = {};
-  }
-
-  localStorage.setItem(localHistoryKey(), JSON.stringify(MT_CACHE.history));
-  localStorage.setItem('mt_exp_v1', JSON.stringify(MT_CACHE.expenses));
-  localStorage.setItem('mt_ic_v3', JSON.stringify(MT_CACHE.insights));
-
-  if (document.getElementById('mainApp')?.style.display === 'block') {
-    renderHome();
-    renderHistory();
-    renderGlobal();
-    // Intento llamar a funciones de UI opcionales si existen
-    if(typeof renderUserAvatar === 'function') renderUserAvatar();
-    if(typeof renderProfileCard === 'function') renderProfileCard();
-    if(typeof updateApiKeyDisplay === 'function') updateApiKeyDisplay();
-  }
-};
-
-// ... (El resto de tus funciones buildDashboard, renderHistory, etc. se mantienen igual) ...
-
-// 3) CORRECCIÓN DE "BORRAR TODO"
-window.confirmClear = async function () {
-  if (!confirm('¿Borrar TODOS los datos? Esta acción no se puede deshacer.')) return;
-
-  const uid = window.currentUser?.uid || 'demo';
-  localStorage.removeItem(`mt_v2_${uid}`);
-  localStorage.removeItem('mt_exp_v1');
-  localStorage.removeItem('mt_ic_v3');
-
-  if (window.currentUser?.uid && window.db) {
-    try {
-      await deleteDoc(doc(window.db, 'users', window.currentUser.uid));
-    } catch (e) {}
-  }
-
-  MT_CACHE.history = [];
-  MT_CACHE.expenses = [];
-  MT_CACHE.insights = {};
-
-  renderHome();
-  renderHistory();
-  renderGlobal();
-  showToast('🗑 Datos eliminados');
-};
-
-// ... (Resto del archivo) ...
-</script>
 </body>
 </html>
