@@ -3,30 +3,40 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MotoTrack v3</title>
+<title>MotoTrack SaaS</title>
 
-<!-- FIREBASE -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
 <style>
 body{background:#080810;color:#fff;font-family:sans-serif;padding:20px}
-button{padding:10px;border-radius:8px;border:none;background:#00f5a0;font-weight:bold;margin:5px}
-.card{background:#111;padding:12px;border-radius:10px;margin-top:10px}
-.big{font-size:22px;font-weight:800}
+.card{background:#111;padding:15px;border-radius:12px;margin-bottom:10px}
+.big{font-size:28px;font-weight:800;color:#00f5a0}
+button{padding:12px;border:none;border-radius:10px;background:#00f5a0;font-weight:bold;margin-top:10px;width:100%}
+input{width:100%;padding:10px;border-radius:8px;border:none;margin-top:5px}
 </style>
 </head>
 
 <body>
 
-<h2>🚀 MotoTrack v3</h2>
+<h2>🚀 MotoTrack SaaS</h2>
 
-<button onclick="loginGoogle()">Login</button>
-<button onclick="addTestDay()">Agregar día prueba</button>
+<button onclick="login()">Login con Google</button>
 
-<div id="stats"></div>
-<div id="list"></div>
+<div id="app" style="display:none">
+
+<div id="dashboard"></div>
+
+<div class="card">
+  <h3>Agregar día</h3>
+  <input id="totalInput" placeholder="Total ganado">
+  <button onclick="saveDay()">Guardar</button>
+</div>
+
+<div id="history"></div>
+
+</div>
 
 <script>
 
@@ -35,9 +45,6 @@ const firebaseConfig = {
   apiKey: "AIzaSyAhuE1hw1xshm9MK1sItY9PAVvcLLKqkh4",
   authDomain: "mototrack-50dd1.firebaseapp.com",
   projectId: "mototrack-50dd1",
-  storageBucket: "mototrack-50dd1.firebasestorage.app",
-  messagingSenderId: "506501390826",
-  appId: "1:506501390826:web:9805a13f707fb45729d293"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -45,93 +52,98 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-let currentUser = null;
-let USER_DAYS = [];
+let user = null;
+let days = [];
 
 // 🔐 LOGIN
-function loginGoogle(){
+function login(){
   const provider = new firebase.auth.GoogleAuthProvider();
 
   auth.signInWithPopup(provider)
     .then(res=>{
-      currentUser = res.user;
-      alert("Login exitoso");
-      loadUserData();
+      user = res.user;
+      init();
     })
     .catch(err=>console.error(err));
 }
 
-// 🔄 SESSION
-auth.onAuthStateChanged(user=>{
-  if(user){
-    currentUser = user;
-    loadUserData();
+auth.onAuthStateChanged(u=>{
+  if(u){
+    user = u;
+    init();
   }
 });
 
-// 💾 SAVE
-async function saveDay(day){
-  if(!currentUser){
-    alert("Login primero");
+// 🚀 INIT
+function init(){
+  document.getElementById("app").style.display="block";
+  loadDays();
+}
+
+// 💾 SAVE DAY
+async function saveDay(){
+  const total = parseFloat(document.getElementById("totalInput").value);
+
+  if(!total){
+    alert("Ingresa un número");
     return;
   }
 
   await db.collection("days").add({
-    userId: currentUser.uid,
-    ...day,
+    userId: user.uid,
+    total,
     createdAt: new Date()
   });
 
-  loadUserData();
+  document.getElementById("totalInput").value = "";
+  loadDays();
 }
 
-// 📥 LOAD
-async function loadUserData(){
-  if(!currentUser) return;
+// 📥 LOAD DAYS
+async function loadDays(){
 
   const snap = await db.collection("days")
-    .where("userId","==",currentUser.uid)
+    .where("userId","==",user.uid)
+    .orderBy("createdAt","desc")
     .get();
 
-  USER_DAYS = [];
+  days = [];
 
   snap.forEach(doc=>{
-    USER_DAYS.push(doc.data());
+    days.push(doc.data());
   });
 
   render();
 }
 
-// 🧠 GET DATA
-function getDays(){
-  if(USER_DAYS.length>0) return USER_DAYS;
-
-  // fallback fake
-  return [
-    {day_name:"Lun",total:500},
-    {day_name:"Mar",total:700},
-    {day_name:"Mié",total:300}
-  ];
-}
-
-// 📊 RENDER
+// 📊 DASHBOARD
 function render(){
-  const days = getDays();
 
-  if(!days.length){
-    document.getElementById("stats").innerHTML = "Sin datos";
+  if(days.length === 0){
+    document.getElementById("dashboard").innerHTML = `
+      <div class="card">Sin datos aún</div>
+    `;
     return;
   }
 
-  const total = days.reduce((s,d)=>s+(d.total||0),0);
+  const total = days.reduce((s,d)=>s+d.total,0);
   const avg = total / days.length;
+  const best = days.reduce((a,b)=> a.total>b.total?a:b);
 
-  document.getElementById("stats").innerHTML = `
+  document.getElementById("dashboard").innerHTML = `
     <div class="card">
       <div class="big">$${Math.round(total)}</div>
       Total generado
-      <br><br>
-      Promedio: $${Math.round(avg)}
+    </div>
+
+    <div class="card">
+      Promedio diario<br>
+      <b>$${Math.round(avg)}</b>
+    </div>
+
+    <div class="card">
+      Mejor día<br>
+      <b>$${best.total}</b>
     </div>
   `;
 
@@ -140,23 +152,12 @@ function render(){
   days.forEach(d=>{
     html += `
       <div class="card">
-        ${d.day_name} → $${d.total}
+        $${d.total}
       </div>
     `;
   });
 
-  document.getElementById("list").innerHTML = html;
-}
-
-// 🧪 TEST
-function addTestDay(){
-  const d = {
-    date:"12/04/2026",
-    day_name:"Dom",
-    total:Math.floor(Math.random()*800+200)
-  };
-
-  saveDay(d);
+  document.getElementById("history").innerHTML = html;
 }
 
 </script>
